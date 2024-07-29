@@ -40,7 +40,7 @@ app.get("/api/:url/youtube/info", async (req, res) => {
       );
 
       const videoMap = videoFormats.map(
-        (video) => `${type} - ${video.qualityLabel}`
+        (video) => `mp4 - ${video.qualityLabel}`
       );
 
       res.json(videoMap);
@@ -50,7 +50,7 @@ app.get("/api/:url/youtube/info", async (req, res) => {
   }
 });
 
-app.get("/api/:url/youtube/download", async (req, res) => {
+app.post("/api/:url/youtube/download", async (req, res) => {
   const url = req.params.url;
   const audio = req.query.audioOnly || false;
   const { bitrate, quality } = req.body;
@@ -82,7 +82,7 @@ app.get("/api/:url/youtube/download", async (req, res) => {
         process.cwd(),
         "download",
         "audio",
-        `${videoInfo.videoDetails.title.replace(/\//g, "-")}`
+        `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
       );
 
       const audioStream = fs.createWriteStream(
@@ -165,7 +165,7 @@ app.get("/api/:url/youtube/download", async (req, res) => {
         process.cwd(),
         "download",
         "video",
-        `${videoInfo.videoDetails.title.replace(/\//g, "-")}`
+        `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
       );
 
       const videoStream = fs.createWriteStream(videoPath + ".mp4");
@@ -206,7 +206,7 @@ app.get("/api/:url/youtube/download", async (req, res) => {
             process.cwd(),
             "download",
             "audio",
-            `${videoInfo.videoDetails.title.replace(/\//g, "-")}`
+            `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
           );
 
           const audioStream = fs.createWriteStream(
