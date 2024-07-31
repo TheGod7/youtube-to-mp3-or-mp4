@@ -185,7 +185,16 @@ app.post("/api/:url/youtube/download", async (req, res) => {
 
         if (videoFormat[0].hasAudio) {
           console.log(chalk.green(`[Client] Downloading the video`));
-          res.download(videoPath + ".mp4");
+          res.download(videoPath + ".mp4", (err) => {
+            if (err) {
+              console.log(chalk.red(`[Client] Error in the download ` + err));
+              fs.unlinkSync(`${videoPath}.mp4`);
+            } else {
+              console.log(chalk.green(`[Client] Finished the download `));
+              console.log(chalk.red(`[Client] Deleting the files`));
+              fs.unlinkSync(`${videoPath}.mp4`);
+            }
+          });
         } else {
           console.log(
             chalk.yellow(

@@ -8,7 +8,7 @@ to install you only need to copy the repository and put this commands
 
 ```bash
 npm install
-node app.js
+npm run start
 ```
 
 ## Usage <a name = "usage"></a>
