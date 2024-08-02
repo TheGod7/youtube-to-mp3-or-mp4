@@ -3,12 +3,13 @@ import fs from "fs";
 import ytdl from "@distube/ytdl-core";
 import chalk from "chalk";
 import ffmpeg from "fluent-ffmpeg";
-
+import cors from "cors";
 import constants from "./constants.js";
 import path from "path";
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -36,7 +37,7 @@ app.get("/api/:url/youtube/info", async (req, res) => {
       res.json(videoMap);
     } else {
       const videoFormats = videoInfo.formats.filter(
-        (video) => video.hasVideo == true && video.container == "mp4"
+        (video) => video.hasVideo == true
       );
 
       const videoMap = videoFormats.map(
@@ -154,8 +155,7 @@ app.post("/api/:url/youtube/download", async (req, res) => {
           .run();
       });
     } else {
-      const videoFilter = (video) =>
-        video.qualityLabel == quality && video.container == "mp4";
+      const videoFilter = (video) => video.qualityLabel == quality;
 
       const videoFormat = videoInfo.formats.filter(videoFilter);
 
@@ -168,7 +168,9 @@ app.post("/api/:url/youtube/download", async (req, res) => {
         `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
       );
 
-      const videoStream = fs.createWriteStream(videoPath + ".mp4");
+      const videoStream = fs.createWriteStream(
+        videoPath + `.${videoFormat[0].container}`
+      );
       const stream = ytdl(url, { format: videoFormat[0] });
 
       stream.pipe(videoStream);
@@ -183,164 +185,375 @@ app.post("/api/:url/youtube/download", async (req, res) => {
           )
         );
 
-        if (videoFormat[0].hasAudio) {
-          console.log(chalk.green(`[Client] Downloading the video`));
-          res.download(videoPath + ".mp4", (err) => {
-            if (err) {
-              console.log(chalk.red(`[Client] Error in the download ` + err));
-              fs.unlinkSync(`${videoPath}.mp4`);
-            } else {
-              console.log(chalk.green(`[Client] Finished the download `));
-              console.log(chalk.red(`[Client] Deleting the files`));
-              fs.unlinkSync(`${videoPath}.mp4`);
-            }
-          });
-        } else {
-          console.log(
-            chalk.yellow(
-              `[Client] Downloading the audio of ${videoInfo.videoDetails.title}`
-            )
-          );
-          const audioFilter = (video) =>
-            video.audioQuality == "AUDIO_QUALITY_MEDIUM" &&
-            video.hasAudio == true &&
-            video.hasVideo == false;
-
-          const audioFormat = videoInfo.formats.filter(audioFilter);
-
-          if (audioFormat.length <= 0)
-            throw new Error("Error in the audio format");
-
-          const audioPath = path.join(
-            process.cwd(),
-            "download",
-            "audio",
-            `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
-          );
-
-          const audioStream = fs.createWriteStream(
-            `${audioPath}.${audioFormat[0].container}`
-          );
-
-          const audioStreamYTDL = ytdl(url, {
-            format: audioFormat[0],
-          });
-
-          audioStreamYTDL.pipe(audioStream);
-
-          audioStreamYTDL.on("end", () => {
-            finishTime = Date.now();
-            diffInSeconds = (finishTime - startTime) / 1000;
-
+        if (videoFormat[0].container == "mp4") {
+          if (videoFormat[0].hasAudio) {
+            console.log(chalk.green(`[Client] Downloading the video`));
+            res.download(videoPath + ".mp4", (err) => {
+              if (err) {
+                console.log(chalk.red(`[Client] Error in the download ` + err));
+                fs.unlinkSync(`${videoPath}.mp4`);
+              } else {
+                console.log(chalk.green(`[Client] Finished the download `));
+                console.log(chalk.red(`[Client] Deleting the files`));
+                fs.unlinkSync(`${videoPath}.mp4`);
+              }
+            });
+          } else {
             console.log(
-              chalk.green(
-                `[Client] Finished the download of the audio  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+              chalk.yellow(
+                `[Client] Downloading the audio of ${videoInfo.videoDetails.title}`
               )
             );
+            const audioFilter = (video) =>
+              video.audioQuality == "AUDIO_QUALITY_MEDIUM" &&
+              video.hasAudio == true &&
+              video.hasVideo == false;
 
-            console.log(chalk.yellow(`[Client] Converting the audio to a mp3`));
-            ffmpeg()
-              .input(`${audioPath}.${audioFormat[0].container}`)
-              .toFormat("mp3")
-              .output(`${audioPath}.mp3`)
-              .on("end", () => {
-                finishTime = Date.now();
-                diffInSeconds = (finishTime - startTime) / 1000;
+            const audioFormat = videoInfo.formats.filter(audioFilter);
 
-                fs.unlinkSync(`${audioPath}.${audioFormat[0].container}`);
+            if (audioFormat.length <= 0)
+              throw new Error("Error in the audio format");
 
-                console.log(
-                  chalk.green(
-                    `[Client] Finished the conversion of  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
-                  )
-                );
+            const audioPath = path.join(
+              process.cwd(),
+              "download",
+              "audio",
+              `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
+            );
 
-                console.log(
-                  chalk.yellow(`[Client] Combine the audio and video`)
-                );
+            const audioStream = fs.createWriteStream(
+              `${audioPath}.${audioFormat[0].container}`
+            );
 
-                ffmpeg()
-                  .input(`${audioPath}.mp3`)
-                  .input(`${videoPath}.mp4`)
-                  .videoCodec("copy")
-                  .audioCodec("aac")
-                  .output(`${videoPath} - audio.mp4`)
-                  .on("end", () => {
-                    finishTime = Date.now();
-                    diffInSeconds = (finishTime - startTime) / 1000;
+            const audioStreamYTDL = ytdl(url, {
+              format: audioFormat[0],
+            });
 
-                    fs.unlinkSync(`${audioPath}.mp3`);
-                    fs.unlinkSync(`${videoPath}.mp4`);
+            audioStreamYTDL.pipe(audioStream);
 
-                    console.log(
-                      chalk.green(
-                        `[Client] Finished the combination of  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
-                      )
-                    );
+            audioStreamYTDL.on("end", () => {
+              finishTime = Date.now();
+              diffInSeconds = (finishTime - startTime) / 1000;
 
-                    finishTime = Date.now();
-                    diffInSeconds = (finishTime - clientStart) / 1000;
+              console.log(
+                chalk.green(
+                  `[Client] Finished the download of the audio  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+                )
+              );
 
-                    console.log(
-                      chalk.green(
-                        `[Client] Downloading the file in ${diffInSeconds}`
-                      )
-                    );
+              console.log(
+                chalk.yellow(`[Client] Converting the audio to a mp3`)
+              );
+              ffmpeg()
+                .input(`${audioPath}.${audioFormat[0].container}`)
+                .toFormat("mp3")
+                .output(`${audioPath}.mp3`)
+                .on("end", () => {
+                  finishTime = Date.now();
+                  diffInSeconds = (finishTime - startTime) / 1000;
 
-                    res.download(`${videoPath} - audio.mp4`, (err) => {
-                      if (err) {
-                        console.log(
-                          chalk.red(`[Client] Error in the download ` + err)
-                        );
-                        fs.unlinkSync(`${videoPath} - audio.mp4`);
-                      } else {
-                        console.log(
-                          chalk.green(`[Client] Finished the download `)
-                        );
-                        console.log(chalk.red(`[Client] Deleting the files`));
-                        fs.unlinkSync(`${videoPath} - audio.mp4`);
-                      }
-                    });
-                  })
-                  .on("error", (err) => {
-                    console.log(
-                      chalk.red(`[Client] Error in combination  of the video`)
-                    );
-
-                    if (
-                      fs.existsSync(`${audioPath}.${audioFormat[0].container}`)
-                    )
-                      fs.unlinkSync(`${audioPath}.${audioFormat[0].container}`);
-
-                    if (fs.existsSync(`${audioPath}.mp3`))
-                      fs.unlinkSync(`${audioPath}.mp3`);
-
-                    if (fs.existsSync(`${videoPath}.mp4`))
-                      fs.unlinkSync(`${videoPath}.mp4`);
-
-                    if (fs.existsSync(`${videoPath} - audio.mp4`))
-                      fs.unlinkSync(`${videoPath} - audio.mp4`);
-
-                    throw new Error(err.message);
-                  })
-                  .run();
-              })
-              .on("error", (err) => {
-                console.log(
-                  chalk.red(`[Client] Error in converting to mp3 file `)
-                );
-                if (fs.existsSync(`${audioPath}.${audioFormat[0].container}`))
                   fs.unlinkSync(`${audioPath}.${audioFormat[0].container}`);
 
-                if (fs.existsSync(`${audioPath}.mp3`))
-                  fs.unlinkSync(`${audioPath}.mp3`);
+                  console.log(
+                    chalk.green(
+                      `[Client] Finished the conversion of  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+                    )
+                  );
 
-                if (fs.existsSync(`${videoPath}.mp4`))
-                  fs.unlinkSync(`${videoPath}.mp4`);
-                throw new Error(err.message);
-              })
-              .run();
-          });
+                  console.log(
+                    chalk.yellow(`[Client] Combine the audio and video`)
+                  );
+
+                  ffmpeg()
+                    .input(`${audioPath}.mp3`)
+                    .input(`${videoPath}.mp4`)
+                    .videoCodec("copy")
+                    .audioCodec("aac")
+                    .output(`${videoPath} - audio.mp4`)
+                    .on("end", () => {
+                      finishTime = Date.now();
+                      diffInSeconds = (finishTime - startTime) / 1000;
+
+                      fs.unlinkSync(`${audioPath}.mp3`);
+                      fs.unlinkSync(`${videoPath}.mp4`);
+
+                      console.log(
+                        chalk.green(
+                          `[Client] Finished the combination of  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+                        )
+                      );
+
+                      finishTime = Date.now();
+                      diffInSeconds = (finishTime - clientStart) / 1000;
+
+                      console.log(
+                        chalk.green(
+                          `[Client] Downloading the file in ${diffInSeconds}`
+                        )
+                      );
+
+                      res.download(`${videoPath} - audio.mp4`, (err) => {
+                        if (err) {
+                          console.log(
+                            chalk.red(`[Client] Error in the download ` + err)
+                          );
+                          fs.unlinkSync(`${videoPath} - audio.mp4`);
+                        } else {
+                          console.log(
+                            chalk.green(`[Client] Finished the download `)
+                          );
+                          console.log(chalk.red(`[Client] Deleting the files`));
+                          fs.unlinkSync(`${videoPath} - audio.mp4`);
+                        }
+                      });
+                    })
+                    .on("error", (err) => {
+                      console.log(
+                        chalk.red(`[Client] Error in combination  of the video`)
+                      );
+
+                      if (
+                        fs.existsSync(
+                          `${audioPath}.${audioFormat[0].container}`
+                        )
+                      )
+                        fs.unlinkSync(
+                          `${audioPath}.${audioFormat[0].container}`
+                        );
+
+                      if (fs.existsSync(`${audioPath}.mp3`))
+                        fs.unlinkSync(`${audioPath}.mp3`);
+
+                      if (fs.existsSync(`${videoPath}.mp4`))
+                        fs.unlinkSync(`${videoPath}.mp4`);
+
+                      if (fs.existsSync(`${videoPath} - audio.mp4`))
+                        fs.unlinkSync(`${videoPath} - audio.mp4`);
+
+                      throw new Error(err.message);
+                    })
+                    .run();
+                })
+                .on("error", (err) => {
+                  console.log(
+                    chalk.red(`[Client] Error in converting to mp3 file `)
+                  );
+                  if (fs.existsSync(`${audioPath}.${audioFormat[0].container}`))
+                    fs.unlinkSync(`${audioPath}.${audioFormat[0].container}`);
+
+                  if (fs.existsSync(`${audioPath}.mp3`))
+                    fs.unlinkSync(`${audioPath}.mp3`);
+
+                  if (fs.existsSync(`${videoPath}.mp4`))
+                    fs.unlinkSync(`${videoPath}.mp4`);
+                  throw new Error(err.message);
+                })
+                .run();
+            });
+          }
+        } else {
+          console.log(chalk.yellow(`[Client] Converting to a mp4 file`));
+
+          ffmpeg(videoPath + `.${videoFormat[0].container}`)
+            .toFormat("mp4")
+            .on("end", () => {
+              let finishTime = Date.now();
+              let diffInSeconds = (finishTime - startTime) / 1000;
+
+              console.log(
+                chalk.green(
+                  `[Client] Finished the convert to a mp4 file  in ${diffInSeconds}`
+                )
+              );
+              fs.unlinkSync(`${videoPath}.${videoFormat[0].container}`);
+              if (videoFormat[0].hasAudio) {
+                console.log(chalk.green(`[Client] Downloading the video`));
+                res.download(videoPath + ".mp4", (err) => {
+                  if (err) {
+                    console.log(
+                      chalk.red(`[Client] Error in the download ` + err)
+                    );
+                    fs.unlinkSync(`${videoPath}.mp4`);
+                  } else {
+                    console.log(chalk.green(`[Client] Finished the download `));
+                    console.log(chalk.red(`[Client] Deleting the files`));
+                    fs.unlinkSync(`${videoPath}.mp4`);
+                  }
+                });
+              } else {
+                console.log(
+                  chalk.yellow(
+                    `[Client] Downloading the audio of ${videoInfo.videoDetails.title}`
+                  )
+                );
+                const audioFilter = (video) =>
+                  video.audioQuality == "AUDIO_QUALITY_MEDIUM" &&
+                  video.hasAudio == true &&
+                  video.hasVideo == false;
+
+                const audioFormat = videoInfo.formats.filter(audioFilter);
+
+                if (audioFormat.length <= 0)
+                  throw new Error("Error in the audio format");
+
+                const audioPath = path.join(
+                  process.cwd(),
+                  "download",
+                  "audio",
+                  `${videoInfo.videoDetails.title.replace(/[\|:\/\?]/g, "-")}`
+                );
+
+                const audioStream = fs.createWriteStream(
+                  `${audioPath}.${audioFormat[0].container}`
+                );
+
+                const audioStreamYTDL = ytdl(url, {
+                  format: audioFormat[0],
+                });
+
+                audioStreamYTDL.pipe(audioStream);
+
+                audioStreamYTDL.on("end", () => {
+                  finishTime = Date.now();
+                  diffInSeconds = (finishTime - startTime) / 1000;
+
+                  console.log(
+                    chalk.green(
+                      `[Client] Finished the download of the audio  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+                    )
+                  );
+
+                  console.log(
+                    chalk.yellow(`[Client] Converting the audio to a mp3`)
+                  );
+                  ffmpeg()
+                    .input(`${audioPath}.${audioFormat[0].container}`)
+                    .toFormat("mp3")
+                    .output(`${audioPath}.mp3`)
+                    .on("end", () => {
+                      finishTime = Date.now();
+                      diffInSeconds = (finishTime - startTime) / 1000;
+
+                      fs.unlinkSync(`${audioPath}.${audioFormat[0].container}`);
+
+                      console.log(
+                        chalk.green(
+                          `[Client] Finished the conversion of  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+                        )
+                      );
+
+                      console.log(
+                        chalk.yellow(`[Client] Combine the audio and video`)
+                      );
+
+                      ffmpeg()
+                        .input(`${audioPath}.mp3`)
+                        .input(`${videoPath}.mp4`)
+                        .videoCodec("copy")
+                        .audioCodec("aac")
+                        .output(`${videoPath} - audio.mp4`)
+                        .on("end", () => {
+                          finishTime = Date.now();
+                          diffInSeconds = (finishTime - startTime) / 1000;
+
+                          fs.unlinkSync(`${audioPath}.mp3`);
+                          fs.unlinkSync(`${videoPath}.mp4`);
+
+                          console.log(
+                            chalk.green(
+                              `[Client] Finished the combination of  ${videoInfo.videoDetails.title}  in ${diffInSeconds}`
+                            )
+                          );
+
+                          finishTime = Date.now();
+                          diffInSeconds = (finishTime - clientStart) / 1000;
+
+                          console.log(
+                            chalk.green(
+                              `[Client] Downloading the file in ${diffInSeconds}`
+                            )
+                          );
+
+                          res.download(`${videoPath} - audio.mp4`, (err) => {
+                            if (err) {
+                              console.log(
+                                chalk.red(
+                                  `[Client] Error in the download ` + err
+                                )
+                              );
+                              fs.unlinkSync(`${videoPath} - audio.mp4`);
+                            } else {
+                              console.log(
+                                chalk.green(`[Client] Finished the download `)
+                              );
+                              console.log(
+                                chalk.red(`[Client] Deleting the files`)
+                              );
+                              fs.unlinkSync(`${videoPath} - audio.mp4`);
+                            }
+                          });
+                        })
+                        .on("error", (err) => {
+                          console.log(
+                            chalk.red(
+                              `[Client] Error in combination  of the video`
+                            )
+                          );
+
+                          if (
+                            fs.existsSync(
+                              `${audioPath}.${audioFormat[0].container}`
+                            )
+                          )
+                            fs.unlinkSync(
+                              `${audioPath}.${audioFormat[0].container}`
+                            );
+
+                          if (fs.existsSync(`${audioPath}.mp3`))
+                            fs.unlinkSync(`${audioPath}.mp3`);
+
+                          if (fs.existsSync(`${videoPath}.mp4`))
+                            fs.unlinkSync(`${videoPath}.mp4`);
+
+                          if (fs.existsSync(`${videoPath} - audio.mp4`))
+                            fs.unlinkSync(`${videoPath} - audio.mp4`);
+
+                          throw new Error(err.message);
+                        })
+                        .run();
+                    })
+                    .on("error", (err) => {
+                      console.log(
+                        chalk.red(`[Client] Error in converting to mp3 file `)
+                      );
+                      if (
+                        fs.existsSync(
+                          `${audioPath}.${audioFormat[0].container}`
+                        )
+                      )
+                        fs.unlinkSync(
+                          `${audioPath}.${audioFormat[0].container}`
+                        );
+
+                      if (fs.existsSync(`${audioPath}.mp3`))
+                        fs.unlinkSync(`${audioPath}.mp3`);
+
+                      if (fs.existsSync(`${videoPath}.mp4`))
+                        fs.unlinkSync(`${videoPath}.mp4`);
+                      throw new Error(err.message);
+                    })
+                    .run();
+                });
+              }
+            })
+            .on("error", (err) => {
+              console.log(
+                chalk.red(`[Client] Error in converting to mp4 file `)
+              );
+              if (fs.existsSync(`${videoPath}.${videoFormat[0].container}`))
+                fs.unlinkSync(`${videoPath}.${videoFormat[0].container}`);
+            })
+            .save(videoPath + ".mp4");
         }
       });
     }
